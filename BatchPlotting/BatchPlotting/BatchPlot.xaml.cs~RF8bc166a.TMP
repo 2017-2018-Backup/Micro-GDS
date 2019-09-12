@@ -1,0 +1,945 @@
+﻿using AttUpdatecmd;
+using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.Geometry;
+using Autodesk.AutoCAD.Interop;
+using Microsoft.Win32;
+using MultiSelectionTreeView;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.OleDb;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+
+
+namespace BatchPlotting
+{
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public partial class BatchPlot : Window
+    {
+        string databasePath = string.Empty;
+        string settingsFilePath = string.Empty;
+        string connectionString = string.Empty;
+        string dwfSaveLocation = string.Empty;
+        string pdfSaveLocation = string.Empty;
+        string sopsDwgLocation = string.Empty;
+        string detailedLogLocation = string.Empty;
+        bool _detailedLog = false;
+        public BatchPlot()
+        {
+            InitializeComponent();
+            ClsProperties.IsFormClosed = false;
+            settingsFilePath = Assembly.GetExecutingAssembly().Location;
+            settingsFilePath = @"C:\SOPS\Publish\Settings.ini";// Path.Combine(settingsFilePath.Substring(0, settingsFilePath.LastIndexOf("\\")), @"Publish\Settings.ini");
+            IniFile iniFile = new IniFile(settingsFilePath);
+            databasePath = iniFile.IniReadValue("ConnectionString", "SOPS_DATABASE");
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreatedPDFChecked = iniFile.IniReadValue("ConnectionString", "CREATE_PDF") == "OFF" ? false : true;
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreateDWFChecked = iniFile.IniReadValue("ConnectionString", "CREATE_DWF") == "OFF" ? false : true;
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdatePublishDateChecked = iniFile.IniReadValue("ConnectionString", "UPDATE_PUBLISH_DATE") == "OFF" ? false : true;
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdateSearchInfoChecked = iniFile.IniReadValue("ConnectionString", "UPDATE_SEARCH_INFO") == "OFF" ? false : true;
+            dwfSaveLocation = iniFile.IniReadValue("ConnectionString", "DWG_SAVE_LOCATION");
+            pdfSaveLocation = iniFile.IniReadValue("ConnectionString", "PDF_SAVE_LOCATION");
+            sopsDwgLocation = iniFile.IniReadValue("ConnectionString", "SOPS_DRAWING_LOCATION");
+            Log.detailedLogPath = iniFile.IniReadValue("ConnectionString", "DETAILED_LOG_LOCATION");
+            _detailedLog = iniFile.IniReadValue("ConnectionString", "DETAILED_LOG").Equals("ON", StringComparison.InvariantCultureIgnoreCase) ? true : false;
+            chkDetailedLog.IsChecked = _detailedLog;
+            connectionString = "Provider = Microsoft.ACE.OLEDB.12.0; Data Source =" + databasePath + ";Persist Security Info = False";
+        }
+
+        private void menuImport_Click_1(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "XML Files (*.xml)|*.xml";
+            openFileDialog.Multiselect = false;
+            bool? res = openFileDialog.ShowDialog();
+            if (!(bool)res)
+                return;
+            if (System.IO.File.Exists(openFileDialog.FileName))
+            {
+                var batchPublish = Extension.Create(openFileDialog.FileName);
+                if (batchPublish == null)
+                    return;
+                lstBxDrawings.Items.Clear();
+                batchPublish.Drawing.ForEach(x =>
+                {
+                    if (!x.isLeft)
+                    {
+                        ListViewItem lstItem = new ListViewItem();
+                        lstItem.Content = x.Name;
+                        lstItem.Tag = x.Path;
+                        var isExists = lstBxDrawings.Items.OfType<ListViewItem>().ToList().Where(y => y.Content.Equals(x.Name)).Select(y => y).FirstOrDefault() != null ? true : false;
+                        if (!isExists && File.Exists(x.Path))
+                            lstBxDrawings.Items.Add(lstItem);
+                    }
+                    else
+                    {
+                        MultipleSelectionTreeViewItem treeViewItem = new MultipleSelectionTreeViewItem();
+                        treeViewItem.Tag = x.Path;
+                        treeViewItem.Header = System.IO.Path.GetFileNameWithoutExtension(x.Name);
+                        var isExists = treeViewDocs.Items.OfType<MultipleSelectionTreeViewItem>().ToList().Where(y => y.Header.Equals(treeViewItem.Header)).Select(y => y).FirstOrDefault() != null ? true : false;
+                        if (!isExists && File.Exists(x.Path))
+                            treeViewDocs.Items.Add(treeViewItem);
+                    }
+                });
+                EnableDisableControls(true);
+            }
+        }
+
+        private void menuOpenDoc_Click_1(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var openDialog = new OpenFileDialog();
+                openDialog.Filter = "AutoCAD Files (*.dwg)|*.dwg";
+                openDialog.Multiselect = true;
+                openDialog.ShowDialog();
+                if (openDialog.FileNames.Count() == 0)
+                    return;
+                openDialog.FileNames.OfType<string>().ToList().ForEach(x =>
+                {
+                    MultipleSelectionTreeViewItem treeViewItem = new MultipleSelectionTreeViewItem();
+                    treeViewItem.Tag = x;
+                    treeViewItem.Header = System.IO.Path.GetFileNameWithoutExtension(x);
+                    var isExists = treeViewDocs.Items.OfType<MultipleSelectionTreeViewItem>().ToList().Where(y => y.Header.Equals(treeViewItem.Header)).Select(y => y).FirstOrDefault() != null ? true : false;
+                    if (!isExists)
+                        treeViewDocs.Items.Add(treeViewItem);
+                });
+                EnableDisableControls(true);
+            }
+            catch (Exception ex)
+            {
+                Log.WriteExceptionLog(ex.Message, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                EnableDisableControls(true);
+            }
+        }
+
+
+        private void menuPrint_Click_1(object sender, RoutedEventArgs e)
+        {
+            Plot_Options plotOptions = new Plot_Options();
+            plotOptions.ShowDialog();
+
+        }
+
+        private void menuSave_Click_1(object sender, RoutedEventArgs e)
+        {
+            if (lstBxDrawings.Items.Count == 0 && treeViewDocs.Items.Count == 0)
+            {
+                MessageBox.Show("Please add items to save.", "Batch Plotting", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            SaveFileDialog saveFileDialog = new SaveFileDialog();
+            saveFileDialog.Title = "Save As";
+            saveFileDialog.Filter = "XML Files (*.xml)|*.xml";
+            bool? res = saveFileDialog.ShowDialog();
+            if (!(bool)res)
+                return;
+
+            BatchPlottingPublish batchPlotting = new BatchPlottingPublish();
+            batchPlotting.Drawing = new List<Drawing>();
+            List<Drawing> lstDrawings = new List<Drawing>();
+            lstBxDrawings.Items.OfType<ListViewItem>().ToList().ForEach(x =>
+            {
+                Drawing drawing = new Drawing();
+                drawing.Name = x.Content.ToString();
+                drawing.Path = x.Tag.ToString();
+                drawing.isLeft = false;
+                lstDrawings.Add(drawing);
+            });
+
+            treeViewDocs.Items.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                if (!lstDrawings.Any(y => y.Name.Equals(x.Header.ToString(), StringComparison.InvariantCultureIgnoreCase)))
+                {
+                    Drawing drawing = new Drawing();
+                    drawing.Name = x.Header.ToString();
+                    drawing.Path = x.Tag.ToString();
+                    drawing.isLeft = true;
+                    lstDrawings.Add(drawing);
+                }
+            });
+
+            if (lstDrawings.Any())
+                batchPlotting.Drawing = lstDrawings;
+
+            var serialize = batchPlotting.ToXMLString();
+
+            if (!string.IsNullOrWhiteSpace(serialize))
+            {
+                File.WriteAllText(saveFileDialog.FileName, serialize);
+                MessageBox.Show("File has been saved successfully.", "Batch Plotting", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void menuExit_Click_1(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        private void btnAdd_Click_1(object sender, RoutedEventArgs e)
+        {
+            if (treeViewDocs.SelectedItems.Count == 0)
+                MessageBox.Show("Please select items to add.", "Batch Plotting", MessageBoxButton.OK, MessageBoxImage.Information);
+            treeViewDocs.SelectedItems.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                ListViewItem lstItem = new ListViewItem();
+                lstItem.Content = x.Header;
+                lstItem.Tag = x.Tag;
+                bool isExists = lstBxDrawings.Items.OfType<ListViewItem>().ToList().Where(y => y.Content.Equals(lstItem.Content)).Select(y => y).FirstOrDefault() != null ? true : false;
+                if (!isExists)
+                    lstBxDrawings.Items.Add(lstItem);
+                x.IsSelected = false;
+            });
+            ButtonEnableAccordingListItemsAdd();
+        }
+
+        private void btnAddAll_Click_1(object sender, RoutedEventArgs e)
+        {
+            lstBxDrawings.Items.Clear();
+
+            //var root = (MultipleSelectionTreeViewItem)treeViewDocs.Items[0];
+            treeViewDocs.Items.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                ListViewItem lstItem = new ListViewItem();
+                lstItem.Content = x.Header;
+                lstItem.Tag = x.Tag;
+                lstBxDrawings.Items.Add(lstItem);
+            });
+            ButtonEnableAccordingListItemsAdd();
+            treeViewDocs.SelectedItems.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                x.IsSelected = false;
+            });
+        }
+
+        private void ButtonEnableAccordingListItemsAdd()
+        {
+            btnRemove.IsEnabled = true;
+            btnRemoveAll.IsEnabled = true;
+            btnPublish.IsEnabled = true;
+            menuSave.IsEnabled = true;
+        }
+
+        private void btnRemove_Click_1(object sender, RoutedEventArgs e)
+        {
+            if (lstBxDrawings.SelectedIndex == -1)
+                return;
+            for (int i = 0; i < lstBxDrawings.SelectedItems.Count; i++)
+            {
+                lstBxDrawings.Items.RemoveAt(lstBxDrawings.Items.IndexOf(lstBxDrawings.Items[i]));
+            }
+
+            if (lstBxDrawings.Items.Count == 0)
+            {
+                btnPublish.IsEnabled = false;
+                menuSave.IsEnabled = false;
+            }
+            treeViewDocs.SelectedItems.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                x.IsSelected = false;
+            });
+        }
+
+        private void btnRemoveAll_Click_1(object sender, RoutedEventArgs e)
+        {
+
+            lstBxDrawings.Items.Clear();
+            btnRemoveAll.IsEnabled = false;
+            btnRemove.IsEnabled = false;
+            btnPublish.IsEnabled = false;
+            menuSave.IsEnabled = false;
+            treeViewDocs.SelectedItems.OfType<MultipleSelectionTreeViewItem>().ToList().ForEach(x =>
+            {
+                x.IsSelected = false;
+            });
+        }
+
+        private string GetUserId()
+        {
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.UserId = System.Security.Principal.WindowsIdentity.GetCurrent().Name;
+            return BatchPlottingProperties.BatchPlottingPropertiesInstance.UserId;
+        }
+        public List<string> XReftoBeReProcessed = new List<string>();
+        public bool XrefGraph()
+        {
+            Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+            Database db = doc.Database;
+            List<String> fileNames = new List<string>();
+            using (doc.LockDocument())
+            {
+
+                try
+                {
+                    XrefGraph xg = db.GetHostDwgXrefGraph(true);
+                    GraphNode root = xg.RootNode;
+                    if (root.NumOut <= 0)
+                        return false;
+                    for (int o = 0; o < root.NumOut; o++)
+                    {
+                        XrefGraphNode child = root.Out(o) as XrefGraphNode;
+                        if (child.XrefStatus == XrefStatus.Resolved)
+                        {
+                            fileNames.Add(child.Database.Filename);
+                        }
+                    }
+                }
+                catch { return false; }
+            }
+
+            bool result = false;
+            if (fileNames.Count > 0)
+            {
+                result = true;
+                doc.CloseAndDiscard();
+            }
+
+            foreach (string str in fileNames)
+            {
+                if (System.IO.File.Exists(str))
+                {
+                    Document docPublish = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.Open(str, false);
+                    Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument = docPublish;
+
+                    try
+                    {
+                        using (DocumentLock docLock = docPublish.LockDocument())
+                        {
+                            //Switch of and Thaw the layers that endswith "GRIDREF"
+                            using (Transaction acTrans = docPublish.Database.TransactionManager.StartTransaction())
+                            {
+                                // Open the Layer table for read
+                                LayerTable acLyrTbl;
+                                acLyrTbl = acTrans.GetObject(docPublish.Database.LayerTableId, OpenMode.ForWrite) as LayerTable;
+
+                                string sLayerNameEndsWith = "GRIDREF";
+                                foreach (ObjectId acObjId in acLyrTbl)
+                                {
+                                    LayerTableRecord acLyrTblRec;
+                                    acLyrTblRec = acTrans.GetObject(acObjId, OpenMode.ForWrite) as LayerTableRecord;
+
+                                    if (acLyrTblRec.Name.ToString().EndsWith(sLayerNameEndsWith, StringComparison.InvariantCultureIgnoreCase))
+                                    {
+                                        if (acLyrTblRec.IsOff)
+                                            acLyrTblRec.IsOff = false;
+                                        if (acLyrTblRec.IsFrozen)
+                                            acLyrTblRec.IsFrozen = false;
+                                    }
+                                }
+                                acTrans.Commit();
+                            }
+                        }
+                        if (!XReftoBeReProcessed.Contains(str))
+                            XReftoBeReProcessed.Add(str);
+                        docPublish.CloseAndSave(docPublish.Name);
+
+                    }
+                    catch { }
+                }
+            }
+
+            return result;
+        }
+
+        private void resetXREFFiles()
+        {
+            foreach(string str in XReftoBeReProcessed)
+            {
+
+            }
+        }
+
+        private void btnPublish_Click_1(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                EnableDisableControls(false);
+
+                //EnsureAutoCadIsRunning(_autocadClassId);
+
+                // if (_application != null)
+                //{
+                // _application.Visible = true;
+                //Close all existing drawings
+                //try
+                //{
+                //    _application.Documents.Close();
+                //}
+                //catch { }
+
+
+                //AcadApplication _cadApplication = (AcadApplication)Autodesk.AutoCAD.ApplicationServices.Application.AcadApplication;
+                // _cadApplication.ActiveDocument.Export
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.CloseAll();
+                Document doc = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument;
+                //string dwgPath = doc.Name;
+
+                //doc.CloseAndSave(dwgPath);
+
+                //Log.WriteExceptionLog(databasePath, MethodBase.GetCurrentMethod().Name);
+                //MessageBox.Show("Process started.", "Batch Plotting", MessageBoxButton.OK, MessageBoxImage.Information);
+                int k = 0;
+                lstBxDrawings.Items.OfType<ListViewItem>().ToList().ForEach(x =>
+                {
+                    if (ClsProperties.IsFormClosed)
+                    {
+                        return;
+                    }
+                    if (File.Exists(x.Tag.ToString()))
+                    {
+                        Document docPublish = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.Open(x.Tag.ToString(), false);
+                        Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument = docPublish;
+
+
+                        bool IsDocClosed = XrefGraph();
+
+                        //Since Active document closed for updating external references
+                        if (IsDocClosed)
+                        {
+                            docPublish = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.Open(x.Tag.ToString(), false);
+                            Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument = docPublish;
+                        }
+                        using (docPublish.LockDocument())
+                        {
+                            string docName = docPublish.Name;
+
+                            var dateTime = DateTime.Now;
+                            Log.WriteDebugLog(docName, docName, GetUserId(), dateTime, "Publishing ", true);
+
+                            ////    try
+                            ////    {
+                            ////        //Switch of and Thaw the layers that endswith "GRIDREF" and starts with FRAME
+                            ////        using (Transaction acTrans = docPublish.Database.TransactionManager.StartTransaction())
+                            ////        {
+                            ////            // Open the Layer table for read
+                            ////            LayerTable acLyrTbl;
+                            ////            acLyrTbl = acTrans.GetObject(docPublish.Database.LayerTableId, OpenMode.ForWrite) as LayerTable;
+
+                            ////            string sLayerNameStartsWith = "FRAME";
+                            ////            string sLayerNameEndsWith = "GRIDREF";
+                            ////            foreach (ObjectId acObjId in acLyrTbl)
+                            ////            {
+                            ////                LayerTableRecord acLyrTblRec;
+                            ////                acLyrTblRec = acTrans.GetObject(acObjId, OpenMode.ForWrite) as LayerTableRecord;
+
+                            ////                // acLyrTblRec.Name.ToString().StartsWith(sLayerNameStartsWith, StringComparison.InvariantCultureIgnoreCase) &&
+                            ////                if (acLyrTblRec.Name.ToString().EndsWith(sLayerNameEndsWith, StringComparison.InvariantCultureIgnoreCase))
+                            ////                {
+                            ////                    if (acLyrTblRec.IsOff)
+                            ////                        acLyrTblRec.IsOff = false;
+                            ////                    if (acLyrTblRec.IsFrozen)
+                            ////                        acLyrTblRec.IsFrozen = false;
+                            ////                }
+                            ////            }
+                            ////            acTrans.Commit();
+                            ////        }
+                            ////        docPublish.CloseAndSave(docPublish.Name);
+                            ////    }
+                            ////    catch { }
+
+                            ////    docPublish = Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.Open(x.Tag.ToString(), false);
+                            ////    Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument = docPublish;
+
+
+
+
+                            ////doc.SendCommand("(command \"SECURELOAD\" 0) ");//Disable dll load warning
+                            ////doc.SendCommand("(command \"FILEDIA\" 0) ");
+                            ////docPublish.SendStringToExecute("(command \"BACKGROUNDPLOT\" 0) ", true, false, false);
+                            //docPublish.SendStringToExecute("BACKGROUNDPLOT", true, false, false);
+                            ////doc.SendCommand("(command " + (char)34 + "Netload" + (char)34 + " " + (char)34 + "C:/MGDS/AttUpdatecmd.dll" + (char)34 + ") ");
+                            string outputFileName = "";
+                            bool isProcessed = false;
+                            if (BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreateDWFChecked)
+                            {
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Publishing DWF Time", true);
+                                outputFileName = x.Tag.ToString().Replace("dwg", "dwf");
+                                if (File.Exists(outputFileName))
+                                    File.Delete(outputFileName);
+                                // doc.SendCommand("PublishDWF ");
+
+                                Commands.PublishDWF(dwfSaveLocation, out isProcessed, _detailedLog);//.PublishDrawing("dwf");
+                                //checkFile(outputFileName);
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Publishing DWF Completed Time", false);
+                                System.Threading.Thread.Sleep(3000);
+                            }
+
+                            if (BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreatedPDFChecked)
+                            {
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Publishing PDF Time", true);
+                                outputFileName = x.Tag.ToString().Replace("dwg", "pdf");
+                                if (File.Exists(outputFileName))
+                                    File.Delete(outputFileName);
+                                Commands.PublishDrawing("pdf", pdfSaveLocation, out isProcessed, _detailedLog);
+                                //checkFile(outputFileName);
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Publishing PDF Completed Time", false);
+                                System.Threading.Thread.Sleep(3000);
+                            }
+
+                            //doc.SendCommand("(command \"SECURELOAD\" 1) ");//Disable dll load warning
+                            // doc.SendCommand("(command \"FILEDIA\" 1) ");
+
+                            if (BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdatePublishDateChecked)
+                            {
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Updating Publish Date", true);
+                                Database db = docPublish.Database;
+                                UpdatePublishDate(db);
+                                Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Publish date update completed time", true);
+                            }
+                            if (BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdateSearchInfoChecked)
+                            {
+                                if (!File.Exists(databasePath))
+                                {
+                                    Log.WriteExceptionLog("Database file was not exists in " + databasePath, MethodBase.GetCurrentMethod().Name);
+                                }
+                                else
+                                {
+                                    Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Updating Search Info", false);
+                                    Database db = docPublish.Database;
+                                    UpdateSearchInfo(db, docPublish);
+                                    Log.WriteDebugLog(docName, docName, GetUserId(), DateTime.Now, "Search Info update completed time", false);
+                                }
+                            }
+
+                            if (isProcessed)
+                                k++;
+
+                            Log.WriteDebugLog(docName, docName, GetUserId(), dateTime, "Published ", false);
+                        }
+                        docPublish.CloseAndSave(docPublish.Name);
+                    }
+                });
+                //Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument = doc;
+                //_application.Quit();
+                //_application = null;
+                MessageBox.Show("Number of files processed : " + k.ToString() + ".", "Batch Plotting", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                EnableDisableControls(true);
+
+                //}
+            }
+            catch (Exception ex)
+            {
+                Log.WriteExceptionLog(ex.Message, MethodBase.GetCurrentMethod().Name);
+            }
+        }
+
+        private void DeleteRecordFromMDB(string dwgNumber)
+        {
+            try
+            {
+                OleDbConnection oleDbConnection = new OleDbConnection(connectionString);
+                oleDbConnection.Open();
+                string query = "delete * from Asset_EXTent where drg_number = '" + dwgNumber + "'";
+                OleDbCommand oleDbCommand = new OleDbCommand(query, oleDbConnection);
+                oleDbCommand.ExecuteNonQuery();
+                oleDbConnection.Close();
+            }
+            catch (Exception ex)
+            {
+                Log.WriteExceptionLog("Error from deleting record from database.", MethodBase.GetCurrentMethod().Name);
+            }
+        }
+
+
+
+        private void UpdateSearchInfo(Database db, Document doc)
+        {
+            try
+            {
+                string assetType = string.Empty;
+                string assetNumSwitch = string.Empty;
+                string assetNumbSub = string.Empty;
+                string assetAddress = string.Empty;
+                string diagramNum = string.Empty;
+                string diagramName = string.Empty;
+                double width = (doc.GetAcadDocument() as AcadDocument).Width;
+                //MessageBox.Show(width.ToString());
+                double height = (doc.GetAcadDocument() as AcadDocument).Height;
+                //MessageBox.Show(width.ToString());
+                diagramNum = Path.GetFileNameWithoutExtension(doc.Name);
+                //MessageBox.Show(diagramNum);
+                diagramNum = diagramNum.Substring(diagramNum.Length - 9);
+                //  MessageBox.Show(diagramNum);
+                diagramNum = diagramNum.Substring(diagramNum.Length - 5);
+                // MessageBox.Show(diagramNum);
+                //MessageBox.Show("Deleting in progress");
+                DeleteRecordFromMDB(diagramNum);
+                //MessageBox.Show("Deleting done");
+                OleDbConnection oleDbConnection = new OleDbConnection(connectionString);
+                try
+                {
+                    oleDbConnection.Open();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Problem in connecting with database. - " + ex.ToString());
+                }
+                DataSet loaddataset = new DataSet();
+                OleDbCommandBuilder cb = new OleDbCommandBuilder();
+                string loadsql = "Select * from Asset_EXTent";
+                OleDbDataAdapter loadadapter = new OleDbDataAdapter(loadsql, oleDbConnection);
+                loadadapter.Fill(loaddataset);
+                cb = new OleDbCommandBuilder(loadadapter);
+                // MessageBox.Show("1");
+                loadadapter.TableMappings.Add("Asset_Extent", "Asset_Extent");
+                var columMappings = loadadapter.TableMappings[0].ColumnMappings;
+                columMappings.Add("ID", "ID");
+                columMappings.Add("ASSET_TYPE", "ASSET_TYPE");
+                columMappings.Add("ASSET_NUMBER", "ASSET_NUMBER");
+                columMappings.Add("ASSET_ADDRESS", "ASSET_ADDRESS");
+                columMappings.Add("DIAGRAM_NAME", "DIAGRAM_NAME");
+                columMappings.Add("DRG_NUMBER", "DRG_NUMBER");
+                columMappings.Add("X", "X");
+                columMappings.Add("Y", "Y");
+                columMappings.Add("DRG_WIDTH", "DRG_WIDTH");
+                columMappings.Add("DRG_HEIGHT", "DRG_HEIGHT");
+                oleDbConnection.Close();
+                //  MessageBox.Show("2");
+                diagramName = Path.GetFileNameWithoutExtension(doc.Name).Substring(0, Path.GetFileNameWithoutExtension(doc.Name).IndexOf("_"));
+                //MessageBox.Show(diagramName.ToString());
+                double x = 0; double y = 0;
+                using (Transaction trans = db.TransactionManager.StartTransaction())
+                {
+                    BlockTable blockTable = trans.GetObject(db.BlockTableId, OpenMode.ForRead) as BlockTable;
+                    foreach (ObjectId objId in blockTable)
+                    {
+                        BlockTableRecord blkTableRec = trans.GetObject(objId, OpenMode.ForRead) as BlockTableRecord;
+                        if (blkTableRec.Name.ToUpper().StartsWith("SOPS_TRF_") || blkTableRec.Name.ToUpper().StartsWith("SOPS_SW_"))
+                        {
+
+                            var blockRefIDs = blkTableRec.GetBlockReferenceIds(true, true);
+                            assetType = blkTableRec.Name.ToUpper().StartsWith("SOPS_TRF_") ? "1" : blkTableRec.Name.ToUpper().StartsWith("SOPS_SW_") ? "2" : string.Empty;
+                            foreach (ObjectId blockRefId in blockRefIDs)
+                            {
+                                Entity ent = trans.GetObject(blockRefId, OpenMode.ForRead) as Entity;
+                                if (ent != null)
+                                {
+                                    BlockReference blkReference = ent as BlockReference;
+                                    if (blkReference.Name.Equals(blkTableRec.Name))
+                                    {
+                                        if ((bool)chkDetailedLog.IsChecked)
+                                        {
+                                            Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Updating Search Info started for :     " + blkTableRec.Name + ". Diagram Number : " + diagramNum + ". Asset Type : " + assetType + ". Time Started :" + DateTime.Now.ToString(), false, _detailedLog);
+                                        }
+                                        x = blkReference.Position.X;
+                                        y = blkReference.Position.Y;
+                                        var attIdCollection = blkReference.AttributeCollection;
+                                        bool isLocationFound = false, isSwitchFound = false, isSubNoFound = false;
+                                        foreach (ObjectId attr in attIdCollection)
+                                        {
+                                            AttributeReference attRef = trans.GetObject(attr, OpenMode.ForRead) as AttributeReference;
+                                            if (attRef.Tag.ToUpper().Equals("LOCATION"))
+                                            {
+                                                assetAddress = attRef.TextString;
+                                                isLocationFound = true;
+                                                Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Asset Address :" + assetAddress, false, _detailedLog);
+                                            }
+                                            if (attRef.Tag.ToUpper().Equals("SWITCH_NUMBER"))
+                                            {
+                                                assetNumSwitch = attRef.TextString;
+                                                isSwitchFound = true;
+                                                Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Asset Switch Number :" + assetNumSwitch, false, _detailedLog);
+                                            }
+                                            if (attRef.Tag.ToUpper().Equals("SUB_NUMBER"))
+                                            {
+                                                assetNumbSub = attRef.TextString;
+                                                isSubNoFound = true;
+                                                Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Asset Sub Number :" + assetNumbSub, false, _detailedLog);
+                                            }
+                                        }
+                                        if (!isLocationFound)
+                                            Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Location attribute not found", false, _detailedLog);
+                                        if (!isSwitchFound)
+                                            Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "SWITCH_NUMBER attribute not found", false, _detailedLog);
+                                        if (!isSubNoFound)
+                                            Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "SUB_NUMBER attribute not found", false, _detailedLog);
+
+                                        int maxId = GetMaxId();
+                                        bool isAdded = false;
+                                        //   MessageBox.Show("3");
+                                        var tableAsset = loaddataset.Tables[0];
+                                        //   MessageBox.Show("4");
+                                        if (!string.IsNullOrWhiteSpace(assetNumbSub))
+                                        {
+                                            tableAsset.Rows.Add(maxId, assetType, assetNumbSub, assetAddress, diagramName, diagramNum, x, y, width * 1, height);
+                                            isAdded = true;
+                                        }
+                                        if (!string.IsNullOrWhiteSpace(assetNumSwitch))
+                                        {
+                                            if (isAdded)
+                                                maxId = maxId + 1;
+                                            tableAsset.Rows.Add(maxId, assetType, assetNumSwitch, assetAddress, diagramName, diagramNum, x, y, width * 1, height);
+                                        }
+
+                                        //loadadapter.InsertCommand = cb.GetInsertCommand();
+                                        //loadadapter.Update(loaddataset.Tables[0]);
+
+                                        Log.WriteDebugLog(string.Empty, string.Empty, string.Empty, DateTime.Now, "Updated Search Info completed for :" + blkTableRec.Name + ". Completed Time : " + DateTime.Now, false, _detailedLog);
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    var tableAsset1 = loaddataset.Tables[0];
+                    tableAsset1.Rows.Add(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                    loadadapter.InsertCommand = cb.GetInsertCommand();
+                    loadadapter.Update(loaddataset.Tables[0]);
+
+                }
+            }
+            catch (Exception exx)
+            {
+                var st = new StackTrace(exx, true);
+                // Get the top stack frame
+                var frame = st.GetFrame(0);
+                // Get the line number from the stack frame
+                var line = frame.GetFileLineNumber();
+
+                Log.WriteExceptionLog(connectionString, MethodBase.GetCurrentMethod().Name);
+                Log.WriteExceptionLog(line.ToString(), MethodBase.GetCurrentMethod().Name);
+                Log.WriteExceptionLog(exx.ToString(), MethodBase.GetCurrentMethod().Name);
+            }
+        }
+
+        private int GetMaxId()
+        {
+            OleDbConnection oleDbConnection = new OleDbConnection(connectionString);
+            oleDbConnection.Open();
+            string query = "select MAX(ID) as Id from Asset_EXTent";
+            OleDbCommand oleDbCommand = new OleDbCommand(query, oleDbConnection);
+            System.Data.DataTable dt = new System.Data.DataTable();
+            dt.Load(oleDbCommand.ExecuteReader());
+            oleDbConnection.Close();
+            if (dt.Rows.Count > 0)
+                return Convert.ToInt32(dt.Rows[0][0].ToString());
+            return 0;
+
+        }
+
+        private void UpdatePublishDate(Database db)
+        {
+            using (Transaction trans = db.TransactionManager.StartTransaction())
+            {
+                BlockTable blockTable = trans.GetObject(db.BlockTableId, OpenMode.ForRead, false, true) as BlockTable;
+                foreach (ObjectId objId in blockTable)
+                {
+                    BlockTableRecord blkTableRec = trans.GetObject(objId, OpenMode.ForWrite, false, true) as BlockTableRecord;
+                    if (!blkTableRec.Name.StartsWith("DRAWING_INFO_SCHEM"))
+                        continue;
+                    var blockRefIDs = blkTableRec.GetBlockReferenceIds(true, true);
+                    foreach (ObjectId blockRefId in blockRefIDs)
+                    {
+                        Entity ent = trans.GetObject(blockRefId, OpenMode.ForWrite, false, true) as Entity;
+                        if (ent != null)
+                        {
+                            BlockReference blkReference = ent as BlockReference;
+                            var attIdCollection = blkReference.AttributeCollection;
+                            foreach (ObjectId attr in attIdCollection)
+                            {
+                                AttributeReference attRef = trans.GetObject(attr, OpenMode.ForWrite, false, true) as AttributeReference;
+                                if (attRef.Tag.ToUpper().StartsWith("PUBLISH_DATE"))
+                                {
+                                    using (attRef)
+                                    {
+                                        // attRef.UpgradeOpen();
+                                        attRef.TextString = DateTime.Now.ToShortDateString();
+                                        //attRef.DowngradeOpen();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                trans.Commit();
+                Autodesk.AutoCAD.ApplicationServices.Application.DocumentManager.MdiActiveDocument.Editor.Regen();
+            }
+        }
+
+        private void EnableDisableControls(bool isEnable, bool isLoad = false)
+        {
+            Cursor = !isEnable && !isLoad ? Cursors.Wait : Cursors.Arrow;
+            btnAdd.IsEnabled = isEnable;
+            btnAddAll.IsEnabled = isEnable;
+            btnRemove.IsEnabled = isEnable;
+            btnRemoveAll.IsEnabled = isEnable;
+            if (isLoad)
+                menuFile.IsEnabled = isLoad;
+            else
+                menuFile.IsEnabled = isEnable;
+            treeViewDocs.IsEnabled = isEnable;
+            lstBxDrawings.IsEnabled = isEnable;
+            btnPublish.IsEnabled = isLoad ? false : true;
+            btnCancel.IsEnabled = isLoad ? false : true;
+            chkCreateDWF.IsEnabled = isEnable;
+            chkCreatePDF.IsEnabled = isEnable;
+            chkUpdateSearchInfo.IsEnabled = isEnable;
+            chkUpdatePublishDate.IsEnabled = isEnable;
+        }
+
+        private void checkFile(string outputFileName)
+        {
+            bool loop = true;
+            while (loop)
+            {
+                if (File.Exists(outputFileName))
+                {
+                    loop = false;
+                }
+            }
+        }
+
+        #region Initiate AutoCAD
+
+        private string _autocadClassId = "AutoCAD.Application";
+
+        //public void EnsureAutoCadIsRunning(string classId)
+        //{
+        //    if (!string.IsNullOrEmpty(classId) && classId != _autocadClassId)
+        //        _autocadClassId = classId;
+        //    if (_application == null)
+        //    {
+        //        try
+        //        {
+        //            GetAutoCAD();
+        //        }
+        //        catch (COMException ex)
+        //        {
+        //            try
+        //            {
+        //                StartAutoCad();
+        //                System.Threading.Thread.Sleep(3000);
+        //            }
+        //            catch (Exception e2x)
+        //            {
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //        }
+        //    }
+        //}
+
+        //private void StartAutoCad()
+        //{
+        //    var t = Type.GetTypeFromProgID(_autocadClassId, true);
+        //    // Create a new instance Autocad.
+        //    var obj = Activator.CreateInstance(t, true);
+        //    // No need for casting with dynamics
+        //    _application = (AcadApplication)obj;
+        //}
+
+        //private void GetAutoCAD()
+        //{
+        //    _application = (AcadApplication)Marshal.GetActiveObject(_autocadClassId);
+        //}
+
+        #endregion
+
+        private void btnCancel_Click_1(object sender, RoutedEventArgs e)
+        {
+            EnableDisableControls(true);
+        }
+
+        private void btnOptions_Click_1(object sender, RoutedEventArgs e)
+        {
+            Options options = new Options();
+            options.ShowDialog();
+        }
+
+        private void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                //SOPSDataTableAdapters.ASSET_EXTENTTableAdapter assetExtentAdapetr = new SOPSDataTableAdapters.ASSET_EXTENTTableAdapter();
+                //SOPSData.ASSET_EXTENTDataTable ASSET_EXTENT = new SOPSData.ASSET_EXTENTDataTable();
+                //ASSET_EXTENT = assetExtentAdapetr.GetData();
+                //ASSET_EXTENTDataGridView.ItemsSource = ASSET_EXTENT;
+
+                EnableDisableControls(false, true);
+                chkCreatePDF.IsChecked = BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreatedPDFChecked;
+                chkCreateDWF.IsChecked = BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreateDWFChecked;
+                chkUpdateSearchInfo.IsChecked = BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdateSearchInfoChecked;
+                chkUpdatePublishDate.IsChecked = BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdatePublishDateChecked;
+
+                if (!string.IsNullOrWhiteSpace(sopsDwgLocation))
+                {
+                    if (!Directory.Exists(sopsDwgLocation))
+                        return;
+                    string[] files = Directory.GetFiles(sopsDwgLocation);
+                    if (files == null || files.Count() == 0)
+                        return;
+                    foreach (var file in files)
+                    {
+                        if (!Path.GetExtension(file).Equals(".dwg", StringComparison.InvariantCultureIgnoreCase))
+                            continue;
+                        MultipleSelectionTreeViewItem treeViewItem = new MultipleSelectionTreeViewItem();
+                        treeViewItem.Tag = file;
+                        treeViewItem.Header = System.IO.Path.GetFileNameWithoutExtension(file);
+                        var isExists = treeViewDocs.Items.OfType<MultipleSelectionTreeViewItem>().ToList().Where(y => y.Header.Equals(treeViewItem.Header)).Select(y => y).FirstOrDefault() != null ? true : false;
+                        if (!isExists)
+                            treeViewDocs.Items.Add(treeViewItem);
+                    }
+                    EnableDisableControls(true);
+                }
+            }
+            catch (Exception ex)
+            {
+
+                throw;
+            }
+        }
+
+        private void chkCreateDWF_Click(object sender, RoutedEventArgs e)
+        {
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreateDWFChecked = (bool)chkCreateDWF.IsChecked;
+            IniFile iniFile = new IniFile(settingsFilePath);
+            iniFile.IniWriteValue("ConnectionString", "CREATE_DWF", (bool)chkCreateDWF.IsChecked ? "ON" : "OFF");
+        }
+
+        private void chkCreatePDF_Click(object sender, RoutedEventArgs e)
+        {
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isCreatedPDFChecked = (bool)chkCreatePDF.IsChecked;
+            IniFile iniFile = new IniFile(settingsFilePath);
+            iniFile.IniWriteValue("ConnectionString", "CREATE_PDF", (bool)chkCreatePDF.IsChecked ? "ON" : "OFF");
+        }
+
+        private void chkUpdateSearchInfo_Click(object sender, RoutedEventArgs e)
+        {
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdateSearchInfoChecked = (bool)chkUpdateSearchInfo.IsChecked;
+            IniFile iniFile = new IniFile(settingsFilePath);
+            iniFile.IniWriteValue("ConnectionString", "UPDATE_SEARCH_INFO", (bool)chkUpdateSearchInfo.IsChecked ? "ON" : "OFF");
+        }
+
+        private void chkUpdatePublishDate_Click(object sender, RoutedEventArgs e)
+        {
+            BatchPlottingProperties.BatchPlottingPropertiesInstance.isUpdatePublishDateChecked = (bool)chkUpdatePublishDate.IsChecked;
+            IniFile iniFile = new IniFile(settingsFilePath);
+            iniFile.IniWriteValue("ConnectionString", "UPDATE_PUBLISH_DATE", (bool)chkUpdatePublishDate.IsChecked ? "ON" : "OFF");
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            ClsProperties.IsFormClosed = true;
+        }
+
+        private void chkDetailedLog_Click(object sender, RoutedEventArgs e)
+        {
+            _detailedLog = (bool)chkDetailedLog.IsChecked ? true : false;
+            IniFile iniFile = new IniFile(settingsFilePath);
+            iniFile.IniWriteValue("ConnectionString", "DETAILED_LOG", _detailedLog ? "ON" : "OFF");
+        }
+    }
+}
+

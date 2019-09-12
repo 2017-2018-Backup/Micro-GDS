@@ -1,0 +1,11 @@
+******************Batch Ploting Debug Log******************
+
+
+Time Started                 10/11/2017 09:38:44         
+                             Publishing PDF Time E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            
+File Path                    E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            
+
+
+                             Publishing PDF Completed Time E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            
+File Path                    E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            
+Time Finished                10/11/2017 09:38:44            

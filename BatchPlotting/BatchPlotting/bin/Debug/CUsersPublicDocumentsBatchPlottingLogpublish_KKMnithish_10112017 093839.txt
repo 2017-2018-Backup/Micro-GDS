@@ -1,0 +1,6 @@
+******************Batch Ploting Debug Log******************
+
+
+Time Started                 10/11/2017 09:38:39         
+                             Publishing DWF Time E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            
+File Path                    E:\Chockalingam\Drawings\From Client\ABBOTSBURY_A019757.dwg            

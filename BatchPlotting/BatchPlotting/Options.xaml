@@ -1,0 +1,21 @@
+﻿<Window x:Class="BatchPlotting.Options"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Options" Height="240" Width="300" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+        </Grid.RowDefinitions>
+        <CheckBox IsEnabled="False" Name="chkPublishDate" Grid.Row="0" Content="Update Publish Date" Margin="10,10,0,0"></CheckBox>
+        <CheckBox Name="chkCreateDWF" Grid.Row="1" Content="Create DWF" Margin="10,10,0,0"></CheckBox>
+        <CheckBox Name="chkCreatePDF" Grid.Row="2" Content="Create PDF" Margin="10,10,0,0"></CheckBox>
+        <CheckBox IsEnabled="True" Name="chkUpdateSearchInfo" Grid.Row="3" Content="Update Search Info" Margin="10,10,0,0"></CheckBox>
+        <CheckBox IsEnabled="False" Name="chkFixGrid" Grid.Row="4" Content="Fix Grid" Margin="10,10,0,0"></CheckBox>
+        <Button Grid.Row="5" Content="Ok" Name="btnOk" Click="btnOk_Click" Margin="209,2.333,10,7"/>
+    </Grid>
+</Window>

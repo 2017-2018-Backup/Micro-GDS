@@ -1,0 +1,168 @@
+﻿<Window x:Class="BatchPlotting.BatchPlot"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:multiSelectTreeView ="clr-namespace:MultiSelectionTreeView;assembly=MultiSelectionTreeView"
+        Title="MicroSOPS - Publish v1.1" MinWidth="698" MinHeight="650" Height="650" Width="700" Loaded="Window_Loaded" Icon="Resources/SOPS2016.ico" ResizeMode="CanResize" WindowStartupLocation="CenterScreen" Closing="Window_Closing">
+    <Window.Resources>
+        <Style x:Key="{x:Type ProgressBar}" TargetType="{x:Type ProgressBar}">
+            <Setter Property="Foreground" Value="#FFCBECB0"/>
+            <Setter Property="Background" Value="WhiteSmoke"/>
+            <Setter Property="BorderBrush" Value="LightGray"></Setter>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ProgressBar}">
+                        <Grid Name="TemplateRoot" SnapsToDevicePixels="true">
+                            <Rectangle Fill="{TemplateBinding Background}"/>
+                            <Rectangle Name="PART_Track" Margin="0"/>
+                            <Decorator x:Name="PART_Indicator" HorizontalAlignment="Left" Margin="0">
+                                <Grid Name="Foreground">
+                                    <Rectangle Fill="{TemplateBinding Foreground}" Name="Indicator" />
+                                    <Grid Name="Animation" ClipToBounds="True">
+                                        <Border Name="PART_GlowRect"  Margin="0,0,0,0" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}"/>
+                                    </Grid>
+                                    <Grid Name="Overlay">
+                                    </Grid>
+                                </Grid>
+                            </Decorator>
+
+                            <Border BorderThickness="{TemplateBinding BorderThickness}"
+                        BorderBrush="{TemplateBinding BorderBrush}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsIndeterminate" Value="true">
+                                <Setter TargetName="Indicator" Property="Fill" Value="Transparent" />
+                                <Setter TargetName="PART_GlowRect" Property="Width" Value="100" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <ThicknessAnimation 
+                                        Storyboard.TargetName="PART_GlowRect"
+                                        Storyboard.TargetProperty="Margin"
+                                        From="-50,0,0,0"  To="400,0,0,0" Duration="0:0:2"
+                                        AutoReverse="True" RepeatBehavior="Forever" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30"></RowDefinition>
+            <RowDefinition Height="30"></RowDefinition>
+            <RowDefinition Height="*"></RowDefinition>
+            <RowDefinition Height="Auto"></RowDefinition>
+        </Grid.RowDefinitions>
+        <DockPanel Grid.Row="0">
+            <Menu DockPanel.Dock="Top">
+                <MenuItem Header="_File" Name="menuFile">
+                    <MenuItem Header="_Import From File" Name="menuImport" Click="menuImport_Click_1"></MenuItem>
+                    <MenuItem Header="_Open Document" Name="menuOpenDoc" Click="menuOpenDoc_Click_1"></MenuItem>
+                    <MenuItem Header="_Save to File" Name="menuSave" Click="menuSave_Click_1"></MenuItem>
+                    <MenuItem Header="_Exit" Name="menuExit" Click="menuExit_Click_1"></MenuItem>
+                </MenuItem>
+            </Menu>
+        </DockPanel>
+        <!--<TextBox Name="txtPlotName" Height="30" Grid.Row="1" IsReadOnly="True"></TextBox>-->
+        <StackPanel Grid.Row="1" Height="30" Orientation="Horizontal">
+
+            <Button Margin="5,0,5,0" BorderBrush="Gray" Background="#FFEEEEEE" Name="btnAscending" Height="30" Width="30" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Click="btnAscending_Click">
+                <Image Source="Resources/A-Z.png"></Image>
+            </Button>
+            <Button BorderBrush="Gray" Background="#FFEEEEEE" Name="btnDescending" Height="30" Width="30" Style="{StaticResource {x:Static ToolBar.ButtonStyleKey}}" Click="btnDescending_Click">
+                <Image Source="Resources/Z-A.png"></Image>
+            </Button>
+        </StackPanel>
+        <Grid Grid.Row="2"  Margin="0" >
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="281*"></ColumnDefinition>
+                <ColumnDefinition Width="126"></ColumnDefinition>
+                <ColumnDefinition Width="281*"></ColumnDefinition>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition></RowDefinition>
+            </Grid.RowDefinitions>
+            <!--<multiSelectTreeView:MultipleSelectionTreeView Grid.Row="0"  Name="treeViewDocs" BorderBrush="Black" Grid.Column="0" Margin="5" SelectionMode="MultipleSelectionOnly"/>-->
+            <ListBox Grid.Row="0" Name="treeViewDocs" BorderBrush="Black" Grid.Column="0" Margin="5" MouseDoubleClick="treeViewDocs_MouseDoubleClick" SelectionMode="Multiple"/>
+            <Grid Grid.Column="1"  Margin="0" VerticalAlignment="Top">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="30" />
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="15"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="30"/>
+                    <RowDefinition Height="35"/>
+                    <RowDefinition Height="35"/>
+                    <RowDefinition Height="30"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Button Name="btnAdd" Content="Add" Grid.Row="0"  VerticalAlignment="Center" Width="75"  Click="btnAdd_Click_1" />
+                <Button Name="btnAddAll" Grid.Row="1" Content="Add All"  VerticalAlignment="Center" Width="75"  Click="btnAddAll_Click_1"/>
+                <Button Name="btnRemove" Grid.Row="2" Content="Remove"  VerticalAlignment="Center" Width="75"  Click="btnRemove_Click_1"/>
+                <Button Name="btnRemoveAll" Grid.Row="3" Content="Remove All" HorizontalAlignment="Center" VerticalAlignment="Center" Width="75"  Click="btnRemoveAll_Click_1" />
+                <Button Name="btnPublish" Grid.Row="4" Content="Publish" VerticalAlignment="Center" Width="75"  Click="btnPublish_Click_1"/>
+                <Button Name="btnCancel" Grid.Row="5" Content="Cancel" VerticalAlignment="Center" Width="75"  Click="btnCancel_Click_1" />
+                <!--<Button Name="btnOptions" Content="Options" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Click="btnOptions_Click_1" Margin="12,217,0,0"/>-->
+                <CheckBox Click="chkCreateDWF_Click" Margin="5,0,0,0" Name="chkCreateDWF" Grid.Row="7">
+                    <TextBlock Text="Create DWF" TextWrapping="Wrap" Width="71"></TextBlock>
+                </CheckBox>
+                <CheckBox Click="chkCreatePDF_Click" Margin="5,0,0,0" Name="chkCreatePDF" Grid.Row="8" >
+                    <TextBlock Text="Create PDF" TextWrapping="Wrap" Width="64"></TextBlock>
+                </CheckBox>
+
+                <CheckBox Click="chkUpdatePublishDate_Click" Margin="5,0,0,0" IsEnabled="True" x:Name="chkUpdatePublishDate"  Grid.Row="9">
+                    <TextBlock TextWrapping="Wrap" Text="Update 
+                               Publish Date" Width="104"/>
+                </CheckBox>
+
+                <CheckBox Click="chkUpdateSearchInfo_Click" IsEnabled="True" Margin="5,0,0,0" Name="chkUpdateSearchInfo"  Grid.Row="10">
+                    <TextBlock TextWrapping="Wrap" Text="Update 
+                               Search Info" Width="96"></TextBlock>
+                </CheckBox>
+                <CheckBox Click="chkDetailedLog_Click" IsEnabled="True" Name="chkDetailedLog" Margin="5,0,0,0"  Grid.Row="11">
+                    <TextBlock TextWrapping="Wrap" Text="Detailed Log" Width="96"></TextBlock>
+                </CheckBox>
+
+                <DataGrid Visibility="Collapsed" Name="ASSET_EXTENTDataGridView" CanUserAddRows="True" CanUserDeleteRows="True" CanUserReorderColumns="False" CanUserResizeColumns="True" ColumnHeaderHeight="25" Margin="0,260,0,0" ItemsSource="{Binding ASSET_EXTENT,Mode=TwoWay}">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="ID" Binding="{Binding ID}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="ASSET_TYPE" Binding="{Binding ASSET_TYPE}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="ASSET_NUMBER" Binding="{Binding ASSET_NUMBER}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="ASSET_ADDRESS" Binding="{Binding ASSET_ADDRESS}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="DIAGRAM_NAME" Binding="{Binding DIAGRAM_NAME}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="DRG_NUMBER" Binding="{Binding DRG_NUMBER}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="X" Binding="{Binding X}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="Y" Binding="{Binding Y}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="DRG_WIDTH" Binding="{Binding DRG_WIDTH}"></DataGridTextColumn>
+                        <DataGridTextColumn Header="DRG_HEIGHT" Binding="{Binding DRG_HEIGHT}"></DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+
+            </Grid>
+            <ListBox Grid.Column="2" Grid.Row="0" Name="lstBxDrawings" BorderBrush="Black" Margin="5" SelectionMode="Multiple"></ListBox>
+        </Grid>
+        <Grid Grid.Row="3" Margin="0" Name="gridProcess" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="30"></RowDefinition>
+                <RowDefinition Height="30"></RowDefinition>
+                <RowDefinition Height="*"></RowDefinition>
+            </Grid.RowDefinitions>
+            <Label Name="lblHeader" Grid.Row="0" Content="Processing......"></Label>
+            <Label Name="lblStatusPublisher" Grid.Row="1"></Label>
+            <ProgressBar Grid.Row="2" Margin="5,0,5,0" Name="pbStatus" Height="30" />
+            <TextBlock Grid.Row="2"  Foreground="Red" Name="txtPercentage" HorizontalAlignment="Center"  VerticalAlignment="Center" />
+        </Grid>
+    </Grid>
+</Window>
